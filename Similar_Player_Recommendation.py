@@ -58,7 +58,14 @@ def spr(player_index='', player_id='', ncluster=9, sim_counts=20, method="spectr
     player_df.index = util_df.loc[:, "ID"]
 
     # ===========Parameter input================
-    if not player_index:
+    # try:
+    #     player_index
+    # except NameError:
+    #     index_exists = False
+    # else:
+    #     index_exists = True
+
+    if player_index == "":
         player_rowindex = pd.array(index_id[index_id == player_id].index)[0]
     else:
         player_rowindex = player_index
@@ -80,13 +87,13 @@ def spr(player_index='', player_id='', ncluster=9, sim_counts=20, method="spectr
     global clustering
     if method == "spectral":
         # spectral clustering
-        print("Method = Spectral clustering")
+        print("======================Method = Spectral clustering=======================")
         clustering = SpectralClustering(n_clusters=n, assign_labels="discretize", affinity='precomputed')
         clustering.fit(sim_matrix)
 
     elif method == "kmeans":
         # kmeans clustering
-        print("Method = Kmeans")
+        print("======================Method = Kmeans clustering==========================")
         clustering = KMeans(n_clusters=n)
         clustering.fit(player_df)
 
