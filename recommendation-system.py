@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[280]:
+# In[41]:
 
 
 from pyspark import SparkContext
@@ -16,11 +16,15 @@ import pandas as pd
 from collections import Counter
 import re
 import time
+from pathos.pools import ProcessPool as Pool
+
+num_partitions = 10
+num_cores = 2
 
 spark = SparkSession.builder.appName('FootballManager').getOrCreate()
 
 
-# In[261]:
+# In[42]:
 
 
 def readCSV(path):
@@ -32,7 +36,67 @@ _teams_df = pd.read_csv('./team_feat.csv')
 _players_df = pd.read_csv('./data_clean.csv')
 
 
-# In[290]:
+# In[43]:
+
+
+def single_workflow(features):
+    def foo(teams_df, input):
+        """
+        Get 3 features-teams matrixs , transfer the features' score into weights(use Reciprocal Function) and thus we have 3 weighted-teams matrixs.
+
+        :param: input, a dic of features vectors
+        :return a tuple of weighted-teams matrixs
+        """
+        features = input
+
+        teams_columns = dict(zip(range(0,teams_df['Club'].size), teams_df['Club']))
+
+        features_teams = teams_df.loc[:, features].T
+        features_teams = features_teams.rename(columns=teams_columns)
+
+        weights_teams = features_teams.applymap(lambda x: 1./float(x))
+
+        return weights_teams
+
+    def getPlayersTeamsMatrix_parallel(players_df, teams_df, input):
+        """
+        Create three sections, each section has a m*n and n*k matrix,
+        where m is the number of players, n is the number of features' weights,
+        and k is the number of teams. For all these three pairs of matrices,
+        do the matrix multiplication. Then we can get 3 MxK matrices for DEF, MID and ATK positions.
+
+        :params: input, a dict 
+        : return: a tuple of three players_teams matrixs
+        """
+
+        features = input['features']
+        weights_teams = input['weights_teams']
+
+        players_rows = dict(zip(range(0, players_df['Name'].size), players_df['Name']))
+
+        # DEF
+        players_features = players_df.loc[:, features]
+        players_features = players_features.rename(index=players_rows)
+        players_teams = players_features.dot(weights_teams)
+
+        return players_teams
+
+    weights_teams = foo(
+      _teams_df,
+      features
+    )
+    players_teams = getPlayersTeamsMatrix_parallel(
+      _players_df,
+      _teams_df,
+      {
+          'features': features,
+          'weights_teams': weights_teams
+      }
+    )
+    return players_teams
+
+
+# In[44]:
 
 
 class RecommendationEngine(object):
@@ -245,22 +309,47 @@ class RecommendationEngine(object):
             }
         )
         end=time.time()
-        print("The recommendation running time is: {:.2f} seconds".format(end-start))
+        print("The recommendation running time is: {:.2f} seconds in Serial Mode".format(end-start))
         return players_teams_DEF, players_teams_MID, players_teams_ATK
     
-    def getRecommendation(self):
+    def _run_parallel(self):
         """
-        Get the recommendation result, use lazy load mode
+        Run the recommendation engine
         
         :return: a tuple of three players_teams matrixs
         """
+        
+        start=time.time()
+        with Pool(num_cores) as pool:
+            self._players_df = self.__groupPosition(self._players_df)
+            features_array = list(self.__findTopRelatedPosition(self._players_df))
+            players_teams_array = pool.map(single_workflow, features_array)
+            pool.close()
+            pool.join()
+        end=time.time()
+        
+        print("The recommendation running time is: {:.2f} seconds in Parallel mode".format(end-start))
+        players_teams_DEF = players_teams_array[0]
+        players_teams_MID = players_teams_array[1]
+        players_teams_ATK = players_teams_array[2]
+        return players_teams_DEF, players_teams_MID, players_teams_ATK
+    
+    def getRecommendation(self, mode=1):
+        """
+        Get the recommendation result, use lazy load mode
+        
+        :param: mode, 0 means serial, 1 means parallel, defualt is 0
+        :return: a tuple of three players_teams matrixs
+        """
         if len(self.result) == 0:
-            players_teams_DEF, players_teams_MID, players_teams_ATK = self._run()
+            if mode == 1:
+                players_teams_DEF, players_teams_MID, players_teams_ATK = self._run_parallel()
+            else:
+                players_teams_DEF, players_teams_MID, players_teams_ATK = self._run()
             self.result['players_teams_DEF'] = players_teams_DEF
             self.result['players_teams_MID'] = players_teams_MID
             self.result['players_teams_ATK'] = players_teams_ATK
         return self.result
-    
 
 class RecommendationSystem(object):
     def __init__(self, recommendation_engine, players_df, teams_df, _players_df, _teams_df):
@@ -356,22 +445,20 @@ class FootballManager(object):
             raise RuntimeError('No player or team is found, please at least offer one argument')
         
 
-    
 
-
-# In[291]:
+# In[45]:
 
 
 recommendation_engine = RecommendationEngine(players_df, teams_df, _players_df, _teams_df)
 
 
-# In[292]:
+# In[46]:
 
 
 recommendationSystem = RecommendationSystem(recommendation_engine, players_df, teams_df, _players_df, _teams_df)
 
 
-# In[293]:
+# In[47]:
 
 
 players = recommendationSystem.getMVPForTeam('LA Galaxy', 'DEF', 10)
@@ -379,4 +466,10 @@ print(players)
 teams = recommendationSystem.getMVTForPlayer('L. Messi', 'DEF', 10)
 print(teams)
 recommendationSystem.searchWorstPlayersInPosByTeam('DEF', 'LA Galaxy')
+
+
+# In[ ]:
+
+
+
 
