@@ -6,7 +6,7 @@ In soccer’ s transfer market, the club managers find it more and more difficul
 
 ### Player Dataset
 
-[Player dataset](https://github.com/BigTony666/football-manager/blob/master/data_clean.csv) originally comes from [sofifa](https://sofifa.com/), includes main features of each individual players, such as height, ball control, long passing, along with performance ratings on different positions and a sum up.
+[Player dataset](https://github.com/BigTony666/football-manager/blob/master/data_clean.csv) originally comes from [sofifa](https://sofifa.com/), includes main features of each individual players, such as height, ball control, long passing, along with performance ratings on different positions and a sum up.
 
 Table structure: $16123\ players * 74\ features$
 
